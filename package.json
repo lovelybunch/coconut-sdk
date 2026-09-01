@@ -1,0 +1,58 @@
+{
+  "name": "coconut-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Coconut Context HTTP API — pages, structured metadata, search, templates and typed records, spaces, and space agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lovelybunch/coconut-sdk.git"
+  },
+  "homepage": "https://github.com/lovelybunch/coconut-sdk#readme",
+  "bugs": "https://github.com/lovelybunch/coconut-sdk/issues",
+  "keywords": [
+    "coconut",
+    "coconut-sdk",
+    "context",
+    "sdk",
+    "api-client",
+    "knowledge",
+    "agents"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc --noEmit -p tsconfig.lint.json",
+    "prepublishOnly": "pnpm run build",
+    "example:pull": "node --import tsx examples/01-pull-records.ts",
+    "example:write-back": "node --import tsx examples/02-write-back.ts",
+    "example:visualize": "node --import tsx examples/03-visualize.ts",
+    "example:chat": "node --import tsx examples/04-chat-with-a-space.ts"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
