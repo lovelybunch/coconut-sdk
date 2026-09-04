@@ -1,7 +1,7 @@
 {
   "name": "coconut-sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK for the Coconut Context HTTP API — pages, structured metadata, search, templates and typed records, spaces, and space agents.",
+  "description": "TypeScript SDK for the Coconut Context HTTP API \u2014 pages, structured metadata, search, templates and typed records, spaces, and space agents.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
@@ -46,7 +46,9 @@
     "example:pull": "node --import tsx examples/01-pull-records.ts",
     "example:write-back": "node --import tsx examples/02-write-back.ts",
     "example:visualize": "node --import tsx examples/03-visualize.ts",
-    "example:chat": "node --import tsx examples/04-chat-with-a-space.ts"
+    "example:chat": "node --import tsx examples/04-chat-with-a-space.ts",
+    "example:blame": "node --import tsx examples/05-blame.ts",
+    "example:gardener": "node --import tsx examples/06-gardener.ts"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
