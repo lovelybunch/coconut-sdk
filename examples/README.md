@@ -1,7 +1,8 @@
 # coconut-sdk examples
 
-Four small scripts that walk the SDK's showcase path: discover → write back →
-visualize → chat. They run against any Coconut Context deployment.
+Six small scripts that walk the SDK's showcase path: discover → write back →
+visualize → chat, then two that lean on pages being versioned and linked:
+blame → gardener. They run against any Coconut Context deployment.
 
 ## Setup
 
@@ -23,6 +24,7 @@ Configuration (all optional, shown with defaults):
 | `COCO_ORG_SLUG` | — | Org context on multi-tenant deployments |
 | `ANTHROPIC_API_KEY` | — | Example 04 only (or sign in with `ant auth login`) |
 | `CHAT_MODEL` | `claude-opus-5` | Example 04 only |
+| `COCO_PAGE` | `<COCO_SPACE>/deals/acme` | Example 05 only — the page to blame |
 
 ## The scripts
 
@@ -66,6 +68,28 @@ Prompts to try:
 - "Compare the sourcing-stage deals. Which one should we prioritize and why?"
 - "What changed most recently? Anything stale?"
 - "Draft a one-paragraph partner-meeting update from the pipeline summary."
+
+### 05 — Blame (`pnpm example:blame`)
+
+`git blame` for a memo. Replays every revision of one page oldest → newest and
+attributes each line of the current body to the revision that introduced it,
+with author, kind (human vs agent) and revision note in the gutter. Then merges
+the revision history with the per-key metadata audit trail into one timeline,
+and finishes by rolling the page back to its first revision with make-latest
+and forward again — both land as new revisions, so nothing is ever lost.
+Re-run example 02 a couple of times first to give the memo some history.
+
+### 06 — Gardener (`pnpm example:gardener`)
+
+Tends the space's link graph. Plants a notes page with two dangling links,
+walks every page's outbound links, and reports orphans (nothing links here),
+hubs (most connected) and dangling links (the space-wide broken-link report).
+It heals the dangling links by planting stub pages — through the matching
+record type when the target lives under a type's default path, so the stub is
+born conforming and stamped — then writes a **Map of content** page back into
+the space: a Mermaid graph of the links (orphans dashed, new stubs bold) plus
+the orphan/hub report, stamped with metadata so the garden's health is
+queryable over time. Re-runs find nothing to heal and refresh the map.
 
 ## Where to go from here
 

@@ -116,7 +116,9 @@ only — writes are never retried automatically.
 See [`examples/`](./examples/README.md) for the showcase path — discover &
 pull records, write back (templates, schema-validated metadata, audit trails),
 render a dashboard from space data, and **chat with a space** (a Claude-powered
-REPL grounded in pages via tool use).
+REPL grounded in pages via tool use) — plus two that lean on pages being
+versioned and linked: **blame** a page line by line and roll it back, and a
+**gardener** that maps the link graph, finds orphans, and heals dangling links.
 
 ## Development
 
