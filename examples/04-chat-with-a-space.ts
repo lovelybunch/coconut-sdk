@@ -65,7 +65,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "query_records",
     description:
-      "Query typed records by metadata — 'which pages ARE in state X'. Filters are AND-ed. Ops: eq, neq, exists, missing, gt, gte, lt, lte, contains.",
+      "Query typed records by metadata — 'which pages ARE in state X'. Filters are AND-ed. Ops: eq, neq, exists, missing, gt, gte, lt, lte, contains, in, not-in (value is any / none of an array of candidates).",
     input_schema: {
       type: "object",
       properties: {
@@ -78,7 +78,19 @@ const tools: Anthropic.Tool[] = [
               key: { type: "string" },
               op: {
                 type: "string",
-                enum: ["eq", "neq", "exists", "missing", "gt", "gte", "lt", "lte", "contains"],
+                enum: [
+                  "eq",
+                  "neq",
+                  "exists",
+                  "missing",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "contains",
+                  "in",
+                  "not-in",
+                ],
               },
               value: {},
             },

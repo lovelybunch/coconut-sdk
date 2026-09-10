@@ -83,7 +83,7 @@ tags:
   - name: OAuth
     description: OAuth 2.0 authorization server for MCP clients — discovery, dynamic client registration, authorize, and token endpoints.
   - name: Admin
-    description: Org-admin console — members, users, spaces, agent keys, identity/SSO, connector credentials, policies, and audit. Requires an org owner/admin principal and a database-backed runtime.
+    description: Org-admin console — members, users, spaces, agent keys, identity/SSO, connector credentials, policies, and audit. Requires an org owner/admin principal and a database-backed runtime. Exception — connector-credential routes also accept a non-admin when the operation targets the caller's OWN personal space (spaceSlug `personal`), authorized by the requested action against that personal space (read to list, write to save/test/delete/revoke), so a read-scoped principal cannot mutate; org-wide records and shared spaces stay admin-only.
   - name: SCIM
     description: IdP user provisioning. Authenticated with a SCIM bearer token.
   - name: Billing
@@ -1592,7 +1592,9 @@ paths:
       description: |
         Finds pages whose metadata matches every filter (AND). Ops: `eq`, `neq`, `exists`,
         `missing`, `gt`, `gte`, `lt`, `lte` (numbers and strings — ISO dates compare correctly),
-        and `contains` (array containment). Optional ranking with `orderBy` + `order`.
+        `contains` (array containment), and `in` / `not-in` (value equals any / none of a
+        non-empty array of candidates; `not-in` requires the key to exist, like `neq`).
+        Optional ranking with `orderBy` + `order`.
       security:
         - agentKey: []
         - sessionCookie: []
@@ -1889,8 +1891,8 @@ paths:
       description: |
         Requires the short-lived onboarding cookie set during the OIDC callback. Until
         multi-org login ships, accounts holding an active membership in another org are
-        refused (409) unless the deployment sets `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`;
-        admins can still add such users directly.
+        refused (409) unless the deployment sets `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`.
+        Admin invite-by-email and SCIM provisioning enforce the same rule.
       security: []
       requestBody:
         required: true
@@ -2069,6 +2071,9 @@ paths:
                 redirect_uris:
                   type: array
                   items: { type: string, format: uri }
+                client_name:
+                  type: string
+                  description: Display name shown on the authorization confirmation screen (sanitized, max 120 chars).
       responses:
         "200":
           description: Registered client credentials.
@@ -2082,6 +2087,7 @@ paths:
                   redirect_uris:
                     type: array
                     items: { type: string }
+                  client_name: { type: string }
                   token_endpoint_auth_method: { type: string, const: client_secret_post }
         "400":
           description: Invalid client metadata.
@@ -2098,8 +2104,12 @@ paths:
         Also served at `GET /authorize`. Unauthenticated browsers are redirected to
         `/auth/login` and returned here after sign-in — authentication runs before tenancy
         resolution, so on multi-tenant deployments the org comes from the session claim and
-        first-visit browsers need no org context. On success redirects to `redirect_uri`
-        with `code`, `state`, and `scope`.
+        first-visit browsers need no org context. Signed-in browsers see an HTML
+        confirmation screen summarizing the grant (app, redirect host, workspace, account,
+        scopes); approving posts to `/oauth/authorize/decision`, which redirects to
+        `redirect_uri` with `code`, `state`, and `scope` (cancel redirects with
+        `error=access_denied`). Only the deployment's first-party client
+        (`COCO_MCP_OAUTH_CLIENT_ID`) skips the confirmation screen.
       security: []
       parameters:
         - { name: response_type, in: query, required: true, schema: { type: string, enum: [code] } }
@@ -2110,13 +2120,49 @@ paths:
         - { name: code_challenge, in: query, required: true, schema: { type: string } }
         - { name: code_challenge_method, in: query, required: true, schema: { type: string, enum: [S256] } }
       responses:
+        "200":
+          description: Authorization confirmation screen (HTML) for a signed-in browser.
+          content:
+            text/html: {}
         "302":
-          description: Redirect to `redirect_uri` with an authorization code, to sign-in, or back with an OAuth error.
+          description: Redirect to sign-in, to `redirect_uri` with an OAuth error, or (first-party client only) with an authorization code.
         "400":
           description: Invalid request with no usable redirect URI.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OAuthError" }
+
+  /oauth/authorize/decision:
+    post:
+      tags: [OAuth]
+      operationId: oauthAuthorizeDecision
+      summary: Consent decision for the authorization confirmation screen
+      description: |
+        Also served at `POST /authorize/decision`. Form target of the confirmation screen
+        rendered by `GET /oauth/authorize` — not called by OAuth clients directly. Verifies
+        the signed, short-lived consent token (bound to the authorize request, the approving
+        principal, and the org), then redirects to the client's registered `redirect_uri`
+        with `code` + `state` on approve or `error=access_denied` on cancel. Expired or
+        tampered tokens return an HTML error page (400).
+      security: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [consent, decision]
+              properties:
+                consent:
+                  type: string
+                  description: Signed consent token embedded in the confirmation screen.
+                decision:
+                  type: string
+                  enum: [approve, deny]
+      responses:
+        "302":
+          description: Redirect to `redirect_uri` with a code (approve) or `error=access_denied` (deny), back to the authorize screen (session changed), or to sign-in (session expired).
+        "400":
+          description: Expired or tampered consent token (HTML), or unresolvable org context.
 
   /oauth/token:
     post:
@@ -2244,13 +2290,16 @@ paths:
     post:
       tags: [Agents]
       operationId: startConnectorOauth
-      summary: Start a connector OAuth connect flow (admin)
+      summary: Start a connector OAuth connect flow
       description: >-
         Discovers the vendor's authorization server per the MCP authorization
         spec (RFC 9728/8414 + dynamic client registration + PKCE). Connectors
         whose API host serves no such metadata (Microsoft Graph for OneDrive)
         declare their authorization server in the catalog instead and may
-        reuse a configured OIDC sign-in provider's app registration.
+        reuse a configured OIDC sign-in provider's app registration. Org-admin
+        gated, except spaceSlug `personal` — a caller with write on their own
+        personal space may connect a grant scoped to it (a read-scoped
+        principal is refused).
       requestBody:
         required: true
         content:
@@ -2378,6 +2427,11 @@ paths:
       tags: [Admin]
       operationId: upsertAdminMember
       summary: Add or update an org member (operator)
+      description: |
+        Invite-by-email attaches the global account behind the address. Until multi-org
+        login ships, an email whose account is already active in another organization is
+        refused (409 `account_already_in_organization`) unless the deployment sets
+        `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`.
       parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
       requestBody:
         required: true
@@ -2408,7 +2462,11 @@ paths:
       tags: [Admin]
       operationId: updateAdminMemberRole
       summary: Change a member's role
-      description: Guarded against locking out the last active admin-capable operator (409 `operator_lockout_risk`).
+      description: |
+        Guarded against locking out the last active admin-capable operator (409
+        `operator_lockout_risk`). Reactivating a non-active row is refused (409
+        `account_already_in_organization`) while the account is active in another
+        organization, unless the deployment sets `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`.
       parameters:
         - { name: membershipId, in: path, required: true, schema: { type: string } }
         - $ref: "#/components/parameters/OrgSlugHeader"
@@ -2472,6 +2530,11 @@ paths:
       tags: [Admin]
       operationId: upsertAdminUser
       summary: Create or update a user
+      description: |
+        Invite-by-email attaches the global account behind the address. Until multi-org
+        login ships, an email whose account is already active in another organization is
+        refused (409 `account_already_in_organization`) unless the deployment sets
+        `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`.
       parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
       requestBody:
         required: true
@@ -2502,6 +2565,11 @@ paths:
       tags: [Admin]
       operationId: updateAdminUserStatus
       summary: Change a user's membership status
+      description: |
+        Setting `active` on a non-active row is refused (409
+        `account_already_in_organization`) while the account is active in another
+        organization, unless the deployment sets `COCO_ALLOW_MULTI_ORG_MEMBERSHIP=1`.
+        Other status changes are unrestricted.
       parameters:
         - { name: membershipId, in: path, required: true, schema: { type: string } }
         - $ref: "#/components/parameters/OrgSlugHeader"
@@ -2524,6 +2592,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
   /admin/spaces:
@@ -3085,7 +3154,7 @@ paths:
       tags: [Admin]
       operationId: upsertAdminConnectorCredential
       summary: Store or update connector credentials
-      description: Secret fields are encrypted at rest (requires `COCO_SETTINGS_ENCRYPTION_KEY`); a JSON null clears a field. Omit `spaceSlug` for an org-level record; `personal` resolves to the caller's personal space.
+      description: Secret fields are encrypted at rest (requires `COCO_SETTINGS_ENCRYPTION_KEY`); a JSON null clears a field. Omit `spaceSlug` for an org-level record; `personal` resolves to the caller's personal space and is the one scope a non-admin may write — authorized by a write check against that personal space, so a read-scoped principal is refused.
       parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
       requestBody:
         required: true
@@ -4427,7 +4496,11 @@ components:
           additionalProperties: true
         content:
           type: string
-          description: Markdown page body, stored verbatim on this REST surface. Required unless a `template` supplies it on create. Pass title/frontmatter as the separate fields — only the MCP door's `context_*` tools fold a leading `---` block of flat `key: value` lines back into them; REST does not.
+          description: >-
+            Markdown page body, stored verbatim on this REST surface. Required unless a
+            `template` supplies it on create. Pass title/frontmatter as the separate fields —
+            only the MCP door's `context_*` tools fold a leading `---` block of flat
+            `key: value` lines back into them; REST does not.
         template:
           type: string
           description: Create-only. Template to base the page on — a name resolved in the target space (`event`) or a full `<space>/templates/<name>` path. Applies the template's defaults, validates `metadata` against its schema, and stamps the page's `template` metadata key.
@@ -4935,7 +5008,9 @@ components:
             type: object
             properties:
               key: { type: string }
-              op: { type: string, enum: [eq, neq, exists, missing, gt, gte, lt, lte, contains] }
+              op:
+                type: string
+                enum: [eq, neq, exists, missing, gt, gte, lt, lte, contains, in, not-in]
               value: {}
         space: { type: [string, "null"] }
         items:

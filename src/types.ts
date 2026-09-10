@@ -199,12 +199,17 @@ export type MetadataFilterOp =
   | "gte"
   | "lt"
   | "lte"
-  | "contains";
+  | "contains"
+  | "in"
+  | "not-in";
 
 export interface MetadataFilter {
   key: string;
   op: MetadataFilterOp;
-  /** Required for every op except `exists` / `missing`. */
+  /**
+   * Required for every op except `exists` / `missing`. For `in` / `not-in`,
+   * a non-empty array of candidate values.
+   */
   value?: unknown;
 }
 
