@@ -1,7 +1,7 @@
 {
   "name": "coconut-sdk",
-  "version": "0.1.0",
-  "description": "TypeScript SDK for the Coconut Context HTTP API \u2014 pages, structured metadata, search, templates and typed records, spaces, and space agents.",
+  "version": "0.2.0",
+  "description": "TypeScript SDK for the Coconut Context HTTP API — pages, structured metadata, search, templates and typed records, spaces, and space agents.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
