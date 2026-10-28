@@ -110,5 +110,10 @@ jobs:
       - name: Pin npm
         run: npm install -g npm@12.1.0 && npm --version
 
+      # The path must start with ./ : to npm a bare "pack/name.tgz" is the
+      # GitHub shorthand owner/repo, not a file, and the publish is refused.
       - name: Publish
-        run: npm publish "$(ls pack/*.tgz)" --provenance --access public
+        run: |
+          set -euo pipefail
+          tarball="$(ls pack/*.tgz)"
+          npm publish "./$tarball" --provenance --access public
