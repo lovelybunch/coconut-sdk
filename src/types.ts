@@ -1,9 +1,10 @@
-// Response and request shapes for the Coconut Context HTTP API, transcribed
-// from the documented REST contract (openapi.yaml at the repository root).
-// Timestamps are ISO-8601 strings.
+// Response and request shapes for the Coco HTTP API, transcribed from the
+// API's route handlers (packages/api/src/index.ts) and the agent tool layer
+// (packages/mcp/src/agents.ts). Timestamps are ISO-8601 strings.
 
 /** Any JSON value — metadata values, frontmatter values. */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 // ---------------------------------------------------------------------------
 // Auth / session
@@ -33,6 +34,8 @@ export interface PageSummary {
   title: string;
   version: number;
   updatedAt: string;
+  /** Change note on the current revision, when one was recorded (`GET /pages` only). */
+  note?: string;
 }
 
 /** Full page in the JSON representation (`GET /pages/:space/:path`, Accept: application/json). */
@@ -60,6 +63,13 @@ export interface SpacePagesResult {
   spaceId: string;
   spaceName: string;
   spaceDescription: string;
+  /**
+   * `"own"` when the caller sees only the pages they created in this space
+   * (receipt logging, specs/SPACE-CONTRIBUTIONS.md); absent otherwise.
+   */
+  scope?: "own";
+  /** Present with `scope: "own"`: where contributed pages go and what they are stamped with. */
+  contribution?: { pathPrefix: string; template: string | null };
   items: PageSummary[];
 }
 
@@ -191,17 +201,7 @@ export interface SearchResult {
 }
 
 export type MetadataFilterOp =
-  | "eq"
-  | "neq"
-  | "exists"
-  | "missing"
-  | "gt"
-  | "gte"
-  | "lt"
-  | "lte"
-  | "contains"
-  | "in"
-  | "not-in";
+  "eq" | "neq" | "exists" | "missing" | "gt" | "gte" | "lt" | "lte" | "contains" | "in" | "not-in";
 
 export interface MetadataFilter {
   key: string;
@@ -217,11 +217,23 @@ export interface MetadataQueryOptions {
   filters: MetadataFilter[];
   /** Space slug, or `personal` for your private context. Omit for org-wide. */
   space?: string;
+  /** Rows per page (default 20, max 500). */
   limit?: number;
+  /** Rows to skip; pass the previous result's `nextOffset` to page forward. */
+  offset?: number;
   /** Include each page's full metadata record in the results. */
   includeMetadata?: boolean;
-  /** Metadata key to order by (numbers first, then strings, missing last). */
+  /** Also return `total`, the exact number of matching pages. */
+  includeTotal?: boolean;
+  /** Metadata key to order by (numbers first, then strings, missing last). Exclusive with `sort`. */
   orderBy?: string;
+  /**
+   * Order by a page field instead of a metadata value: `updated` is the
+   * page's last update (a metadata key named `updatedAt` is unaffected).
+   * Exclusive with `orderBy`.
+   */
+  sort?: "updated";
+  /** Direction for `orderBy` or `sort` (default asc). */
   order?: "asc" | "desc";
 }
 
@@ -237,6 +249,15 @@ export interface MetadataQueryItem {
 export interface MetadataQueryResult {
   filters: MetadataFilter[];
   space: string | null;
+  /** The window actually applied (limit is clamped server-side). */
+  limit: number;
+  offset: number;
+  /** True when more matching pages exist past this window. */
+  hasMore: boolean;
+  /** Offset for the next page, or null when `hasMore` is false. */
+  nextOffset: number | null;
+  /** Exact count of every matching page; present when `includeTotal` was requested. */
+  total?: number;
   items: MetadataQueryItem[];
 }
 
@@ -351,15 +372,7 @@ export interface BrokenLinksResult {
 // ---------------------------------------------------------------------------
 
 export type TemplateFieldType =
-  | "string"
-  | "text"
-  | "number"
-  | "boolean"
-  | "date"
-  | "select"
-  | "multiselect"
-  | "list"
-  | "url";
+  "string" | "text" | "number" | "boolean" | "date" | "select" | "multiselect" | "list" | "url";
 
 export interface TemplateField {
   key: string;
@@ -598,4 +611,94 @@ export interface WriteAgentTaskOptions {
   content: string;
   /** Task frontmatter (e.g. `schedule`, `scheduleTz`, `scheduleEnabled`). */
   frontmatter?: Record<string, unknown>;
+}
+
+// Notifications — the caller's inbox (see DOCS.md "Notifications"). Rows are
+// per-recipient: explicit space members at editor or above hear about their
+// spaces, org admins about membership. Agent credentials have no inbox.
+
+export type NotificationCategory = "page" | "agent_run" | "membership";
+
+export interface NotificationActor {
+  id: string;
+  kind: "human" | "agent";
+  /** Resolved display name (or a stable fallback such as `Agent 3fa2b1c0`). */
+  label: string;
+}
+
+export interface NotificationEvent {
+  id: string;
+  category: NotificationCategory;
+  /** e.g. `page.updated`, `agent.run.failed`, `membership.requested`. */
+  type: string;
+  spaceSlug: string | null;
+  /** Page path for page and agent-run events; null for org-scoped events. */
+  subjectPath: string | null;
+  subjectTitle: string;
+  actor: NotificationActor;
+  /**
+   * Per type: `version`/`changedKeys` for page events; `taskPath`, `taskTitle`,
+   * `runId`, `status`, `trigger`, `durationMs`, `message` for agent runs;
+   * `subjectUserId`, `email`, `displayName`, `role`, `status` for membership.
+   * A page event on a typed record also carries `recordType`, `recordStatus`,
+   * `recordOwner` (as written) and `attention`.
+   */
+  payload: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface Notification {
+  id: string;
+  /** Occurrences folded into this row while it stayed unread. */
+  count: number;
+  /** Latest occurrence — the inbox sort key. */
+  occurredAt: string;
+  readAt: string | null;
+  /** One-line human summary, identical across REST, MCP, CLI and the app. */
+  summary: string;
+  /** App-relative link the row opens (`/pages/…`, `/admin/users`), or null. */
+  href: string | null;
+  /**
+   * The row needs the caller rather than merely informing them: a failed
+   * run, an access request, or a typed record (a task, a handoff) moved into
+   * a state that waits on a person. Kept true through folds until read.
+   */
+  attention: boolean;
+  event: NotificationEvent;
+}
+
+export interface NotificationUnreadSummary {
+  /** Unread rows visible to the caller (access re-checked). */
+  unread: number;
+  /** Of `unread`, the rows that need the caller. */
+  attention: number;
+  /** Shared spaces with at least one unread row, by slug. Org-scoped rows count in the totals only. */
+  bySpace: Record<string, { unread: number; attention: number }>;
+}
+
+export interface NotificationMarkAllReadOptions {
+  /** Only this space's rows. */
+  space?: string;
+  /** `activity` leaves the rows that need the caller unread. Default `all`. */
+  scope?: "all" | "activity";
+}
+
+export interface NotificationListOptions {
+  unreadOnly?: boolean;
+  /** Only this space's rows (a kebab-case slug). */
+  space?: string;
+  /** 1–100, default 20. */
+  limit?: number;
+  /** Opaque cursor from a previous page's `nextBefore` (a bare ISO timestamp also works). */
+  before?: string;
+}
+
+export interface NotificationListResult {
+  items: Notification[];
+  /** Unread rows visible to the caller (access re-checked), independent of paging. */
+  unread: number;
+  /** Opaque keyset cursor; pass back as `before` for the next page. Null once exhausted. */
+  nextBefore: string | null;
+  limit: number;
+  unreadOnly: boolean;
 }

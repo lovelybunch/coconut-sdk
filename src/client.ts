@@ -7,6 +7,7 @@
 import { CocoHttp, type CocoHttpOptions } from "./http.js";
 import type { SessionResult } from "./types.js";
 import { AgentsApi } from "./resources/agents.js";
+import { NotificationsApi } from "./resources/notifications.js";
 import { PagesApi } from "./resources/pages.js";
 import { PersonalApi } from "./resources/personal.js";
 import { SearchApi } from "./resources/search.js";
@@ -46,6 +47,8 @@ export class CocoClient {
   readonly spaceTemplates: SpaceTemplatesApi;
   /** Space agents: tasks, runs, instructions. */
   readonly agents: AgentsApi;
+  /** The caller's inbox: page activity, agent run outcomes, membership events. */
+  readonly notifications: NotificationsApi;
 
   private readonly http: CocoHttp;
 
@@ -59,6 +62,7 @@ export class CocoClient {
     this.records = new RecordsApi(this.templates, this.search, this.pages);
     this.spaceTemplates = new SpaceTemplatesApi(this.http);
     this.agents = new AgentsApi(this.http);
+    this.notifications = new NotificationsApi(this.http);
   }
 
   /** Liveness probe (`GET /health`). */

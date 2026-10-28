@@ -1,5 +1,5 @@
 // Shared setup for the examples: one client configured from the environment,
-// pointed at a local dev stack of the product by default.
+// pointed at a local stack by default (`./scripts/compose-local.sh up`).
 
 import { CocoClient } from "../src/index.js";
 
@@ -9,7 +9,7 @@ export const TEMPLATE = process.env.COCO_TEMPLATE ?? "deal-memo";
 export function createClientFromEnv(): CocoClient {
   return new CocoClient({
     baseUrl: process.env.COCO_BASE_URL ?? "http://localhost:8787",
-    // Local dev stacks seed this dev key; real deployments mint keys
+    // The compose-local stack seeds this dev key; real deployments mint keys
     // at POST /admin/agent-keys (they look like `coco_...`).
     apiKey: process.env.COCO_API_KEY ?? "dev-agent-key-change-me",
     orgSlug: process.env.COCO_ORG_SLUG,

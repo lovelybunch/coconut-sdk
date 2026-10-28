@@ -2,7 +2,7 @@
 // the metadata query engine — filters AND-ed together with optional ordering
 // by a metadata value. Both are ACL-filtered per hit.
 
-import { CocoHttp } from "../http.js";
+import type { CocoHttp } from "../http.js";
 import type {
   MetadataKeysResult,
   MetadataQueryOptions,
@@ -25,6 +25,8 @@ export class SearchApi {
    * Metadata query. "Which pages *are* in state X" — e.g.
    * `[{key: "stage", op: "eq", value: "diligence"},
    *   {key: "conviction-score", op: "gte", value: 0.7}]`.
+   * Results are paged: the result carries `hasMore` and `nextOffset`; pass
+   * `nextOffset` back as `offset` for the next page.
    */
   metadata(options: MetadataQueryOptions): Promise<MetadataQueryResult> {
     return this.http.requestJson<MetadataQueryResult>("GET", "/search/metadata", {
@@ -32,8 +34,11 @@ export class SearchApi {
         filters: JSON.stringify(options.filters),
         space: options.space,
         limit: options.limit,
+        offset: options.offset,
         includeMetadata: options.includeMetadata ? "true" : undefined,
+        includeTotal: options.includeTotal ? "true" : undefined,
         orderBy: options.orderBy,
+        sort: options.sort,
         order: options.order,
       },
     });

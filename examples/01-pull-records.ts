@@ -71,9 +71,7 @@ if (first) {
   console.log(`Markdown (first 3 lines):\n${markdown.split("\n").slice(0, 3).join("\n")}`);
 
   const links = await coco.pages.links(first.path);
-  console.log(
-    `Links: ${links.outbound.length} outbound, ${links.backlinks.length} backlinks`,
-  );
+  console.log(`Links: ${links.outbound.length} outbound, ${links.backlinks.length} backlinks`);
 } else {
   console.log(`No records found — run example 02 to seed "${SPACE}" first.`);
 }

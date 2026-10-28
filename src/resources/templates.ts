@@ -3,7 +3,7 @@
 // a Deal, an Event, a Prospect — and `records` below is the typed-record
 // convenience layer over templates + the metadata query engine.
 
-import { CocoHttp } from "../http.js";
+import type { CocoHttp } from "../http.js";
 import type {
   MetadataFilter,
   MetadataQueryResult,
@@ -11,8 +11,8 @@ import type {
   TemplateSummary,
   TemplatesResult,
 } from "../types.js";
-import { PagesApi } from "./pages.js";
-import { SearchApi } from "./search.js";
+import type { PagesApi } from "./pages.js";
+import type { SearchApi } from "./search.js";
 
 export class TemplatesApi {
   constructor(private readonly http: CocoHttp) {}
@@ -74,7 +74,11 @@ export class RecordsApi {
    * Records of one type in one space: a metadata query with the implicit
    * `template = <name>` filter, metadata included by default.
    */
-  query(space: string, template: string, options: RecordQueryOptions = {}): Promise<MetadataQueryResult> {
+  query(
+    space: string,
+    template: string,
+    options: RecordQueryOptions = {},
+  ): Promise<MetadataQueryResult> {
     return this.search.metadata({
       filters: [{ key: "template", op: "eq", value: template }, ...(options.filters ?? [])],
       space,

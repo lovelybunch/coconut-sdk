@@ -29,10 +29,11 @@ info:
       `POST /admin/identity/scim/tokens/rotate`).
 
     On multi-tenant deployments org context is resolved from the session, from the
-    `X-Coco-Org-Slug` (or `X-Coco-Org-Id`) header, or — for MCP OAuth bearer requests — from
-    the org the access token was minted for, so OAuth clients need no org header. An explicit
-    org header that contradicts the token's org fails authentication. Single-tenant
-    deployments need no org context at all.
+    `X-Coco-Org-Slug` (or `X-Coco-Org-Id`) header, or — for bearer requests — from the org
+    the credential is bound to: an MCP OAuth access token is minted for one org and an agent
+    key (`coco_...`) belongs to one org, so neither needs an org header. An explicit org header
+    that contradicts the credential's org is refused with `403` (`reasonCode: "org_mismatch"`).
+    Single-tenant deployments need no org context at all.
 
     ## Concurrency
 
@@ -74,6 +75,11 @@ tags:
     description: Whole-space starting kits in the coco-space-export bundle format — built-in catalog, optional remote catalog, and org-maintained space snapshots. Backs the app's /templates gallery, its previews, and space creation from a template.
   - name: Webhooks
     description: Org-admin outbound webhooks — HMAC-SHA256-signed JSON deliveries on page events, with per-webhook delivery logs. Requires an org admin and a database-backed runtime.
+  - name: Notifications
+    description: |
+      The signed-in person's inbox: activity in spaces they are an explicit editor (or
+      above) of, agent run outcomes there, and — for org admins — membership events.
+      Human principals only; access is re-checked at read time.
   - name: Search
     description: Full-text search and metadata queries, ACL-filtered per page.
   - name: MCP
@@ -1594,7 +1600,12 @@ paths:
         `missing`, `gt`, `gte`, `lt`, `lte` (numbers and strings — ISO dates compare correctly),
         `contains` (array containment), and `in` / `not-in` (value equals any / none of a
         non-empty array of candidates; `not-in` requires the key to exist, like `neq`).
-        Optional ranking with `orderBy` + `order`.
+        Optional ranking with `orderBy` + `order`, or `sort=updated` for the page's last update.
+
+        Results are paged: `limit` rows from `offset`; the response carries `hasMore` (exact)
+        and `nextOffset`, and `includeTotal=true` adds the exact `total`. Visibility is decided
+        per space before the query runs, so a page is never short because its first matches sat
+        in a space you cannot search. A space you cannot see answers an empty page, not a 404.
       security:
         - agentKey: []
         - sessionCookie: []
@@ -1611,23 +1622,36 @@ paths:
           description: Restrict to one space slug (or `personal`).
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 500, default: 20 }
+          description: Rows per page; larger values are clamped to 500.
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Rows to skip; pass the previous response's `nextOffset`.
         - name: includeMetadata
           in: query
           schema: { type: boolean }
           description: Include each hit's full metadata object.
+        - name: includeTotal
+          in: query
+          schema: { type: boolean }
+          description: Also return `total`, the exact number of matching pages (one COUNT).
         - name: orderBy
           in: query
           schema: { type: string }
-          description: Metadata key to sort by (numbers first, then strings, then pages missing the key).
+          description: Metadata key to sort by (numbers first, then strings, then pages missing the key). Exclusive with `sort`.
+        - name: sort
+          in: query
+          schema: { type: string, enum: [updated] }
+          description: Sort by the page's last update instead of a metadata value (a metadata key named `updatedAt` is unaffected). Exclusive with `orderBy`.
         - name: order
           in: query
           schema: { type: string, enum: [asc, desc] }
-          description: Sort direction; requires `orderBy`.
+          description: Sort direction (default asc); requires `orderBy` or `sort`.
         - $ref: "#/components/parameters/OrgSlugHeader"
       responses:
         "200":
-          description: Matching pages.
+          description: One page of matching pages.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MetadataQueryResult" }
@@ -2650,7 +2674,10 @@ paths:
       tags: [Admin]
       operationId: updateAdminSpace
       summary: Update a space
-      description: Org admins or space admins. Changing `visibility` requires an org admin.
+      description: |
+        Org admins or space admins. Changing `visibility` or any receipt-logging field
+        (`contribution*`) requires an org admin; receipt logging is available on shared
+        spaces only and is audited as `admin.space.contribution_updated`.
       parameters:
         - $ref: "#/components/parameters/SpaceId"
         - $ref: "#/components/parameters/OrgSlugHeader"
@@ -2665,6 +2692,20 @@ paths:
                 name: { type: string }
                 description: { type: string, maxLength: 280 }
                 visibility: { type: string, enum: [private, org] }
+                contributionMode: { type: string, enum: [none, own_pages] }
+                contributionPathPrefix:
+                  type: [string, "null"]
+                  description: |
+                    Lowercase kebab-case segments (for example `receipts` or
+                    `audit/2026-q4`); may not start with `templates/` or `agents/`. Null
+                    clears it (default `receipts/`).
+                contributionTemplate:
+                  type: [string, "null"]
+                  description: Template name in this space (for example `receipt`); null clears.
+                contributionUntil:
+                  type: [string, "null"]
+                  format: date-time
+                  description: End of the window; null clears (open-ended).
       responses:
         "200":
           description: Updated space.
@@ -3547,13 +3588,102 @@ paths:
                         id: { type: string }
                         orgId: { type: string }
                         clientId: { type: string }
+                        clientName:
+                          type: [string, "null"]
+                          description: RFC 7591 client_name or the admin-chosen name.
                         redirectUris:
                           type: array
                           items: { type: string }
+                        pkceRequired:
+                          type: boolean
+                          description: >-
+                            False only for admin-issued clients whose host cannot send a
+                            PKCE code challenge; every dynamically registered client requires
+                            PKCE.
                         status: { type: string }
                         lastUsedAt: { type: [string, "null"], format: date-time }
                         createdAt: { type: string, format: date-time }
                         updatedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    post:
+      tags: [Admin]
+      operationId: createAdminOauthClient
+      summary: Issue an MCP OAuth client for a host that cannot register itself
+      description: >-
+        Creates a confidential OAuth client bound to the caller's organization, for MCP hosts
+        that take a pasted client ID and secret instead of using RFC 7591 dynamic registration
+        (Gemini Enterprise's custom MCP server connector, for example). The `clientSecret` is
+        returned exactly once and stored hashed. `pkceRequired: false` lets a host that cannot
+        send a `code_challenge` complete the authorization-code flow on client-secret
+        authentication alone; a challenge such a client does send is still verified.
+        Dynamically registered clients always require PKCE. Each end user of the host still
+        signs in and approves the grant individually, so tokens are per user.
+      parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientName, redirectUris]
+              properties:
+                clientName:
+                  type: string
+                  maxLength: 120
+                  description: Shown on the consent screen.
+                  example: Gemini Enterprise
+                redirectUris:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { type: string, format: uri }
+                  description: Exact-match callback allowlist; browser-executable schemes are refused.
+                  example: ["https://vertexaisearch.cloud.google.com/oauth-redirect"]
+                pkceRequired:
+                  type: boolean
+                  default: true
+      responses:
+        "201":
+          description: The issued client, its one-time secret, and the values to paste into the host.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  orgId: { type: string }
+                  clientId: { type: string }
+                  clientName: { type: [string, "null"] }
+                  redirectUris:
+                    type: array
+                    items: { type: string }
+                  pkceRequired: { type: boolean }
+                  status: { type: string }
+                  lastUsedAt: { type: [string, "null"], format: date-time }
+                  createdAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+                  clientSecret:
+                    type: string
+                    description: Shown once; only its hash is stored.
+                  setup:
+                    type: object
+                    description: Endpoint values in the vocabulary of a "paste your OAuth details" form.
+                    properties:
+                      mcpUrl: { type: string, format: uri }
+                      authorizationUrl: { type: string, format: uri }
+                      tokenUrl: { type: string, format: uri }
+                      scopes:
+                        type: array
+                        items: { type: string }
+                      tokenEndpointAuthMethods:
+                        type: array
+                        items: { type: string }
+                      redirectUris:
+                        type: array
+                        items: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/Unavailable" }
@@ -3659,6 +3789,148 @@ paths:
                     items: { $ref: "#/components/schemas/AuditEvent" }
                   query: { type: object, additionalProperties: true }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List the caller's notifications
+      description: |
+        Newest first. Recipients are resolved when an event happens — explicit space
+        members at editor or above for page and agent-run events, org owners/admins (plus
+        the subject) for membership events — and each row's space is re-checked against
+        the caller's current access before it is returned. Successive revisions of one
+        page fold into a single unread row (`count`). Agent credentials receive 403.
+      parameters:
+        - { $ref: "#/components/parameters/OrgSlugHeader" }
+        - name: unread
+          in: query
+          description: "`1`/`true` returns unread rows only."
+          schema: { type: string }
+        - name: space
+          in: query
+          required: false
+          schema: { type: string }
+          description: Only this space's rows (a kebab-case slug).
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: before
+          in: query
+          description: |
+            Opaque keyset cursor from a previous page's `nextBefore`. A bare ISO-8601 instant
+            is also accepted and means "everything strictly older than this instant".
+          schema: { type: string }
+      responses:
+        "200":
+          description: The inbox page plus the caller's visible unread count.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationListResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadNotificationCount
+      summary: Unread count
+      description: |
+        The badge numbers, from one grouped query: unread rows the caller can currently
+        see, how many of them need the caller (`attention`), and the same split per shared
+        space (`bySpace`). The header bell and the sidebar's per-space badges poll this.
+      parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
+      responses:
+        "200":
+          description: Unread rows the caller can currently see, in total and per space.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationUnreadSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /notifications/read:
+    post:
+      tags: [Notifications]
+      operationId: markNotificationsRead
+      summary: Mark several notifications read
+      parameters: [{ $ref: "#/components/parameters/OrgSlugHeader" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+      responses:
+        "200":
+          description: Rows transitioned to read (already-read or foreign ids count as 0).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationUpdateResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark every notification read
+      parameters:
+        - { $ref: "#/components/parameters/OrgSlugHeader" }
+        - name: space
+          in: query
+          required: false
+          schema: { type: string }
+          description: Only this space's rows (a kebab-case slug).
+        - name: scope
+          in: query
+          required: false
+          schema: { type: string, enum: [all, activity], default: all }
+          description: |
+            `activity` leaves the rows that need the caller (`Notification.attention`) unread:
+            opening a space's activity view clears what it showed, not the asks still waiting.
+      responses:
+        "200":
+          description: Rows transitioned to read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationUpdateResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark one notification read
+      parameters:
+        - { $ref: "#/components/parameters/OrgSlugHeader" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: "`updated` is 1 on transition, 0 when already read or not the caller's."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationUpdateResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/Unavailable" }
@@ -4586,6 +4858,18 @@ components:
     SpacePagesResult:
       type: object
       properties:
+        scope:
+          type: string
+          enum: [own]
+          description: |
+            Present when the caller sees only the pages they created in this space
+            (receipt logging, specs/SPACE-CONTRIBUTIONS.md).
+        contribution:
+          type: object
+          description: Present with `scope: own`.
+          properties:
+            pathPrefix: { type: string }
+            template: { type: [string, "null"] }
         space: { type: string }
         spaceId: { type: string }
         spaceName: { type: string }
@@ -4963,9 +5247,124 @@ components:
                   path: { type: string }
                   error: { type: string }
 
+    NotificationUpdateResult:
+      type: object
+      properties:
+        updated: { type: integer }
+
+    NotificationUnreadSummary:
+      type: object
+      properties:
+        unread:
+          type: integer
+          description: Unread rows visible to the caller (access re-checked).
+        attention:
+          type: integer
+          description: Of `unread`, the rows that need the caller (see `Notification.attention`).
+        bySpace:
+          type: object
+          description: |
+            Shared spaces with at least one unread row, by slug. Org-scoped rows (membership
+            events) and a personal space's agent-run outcomes count in the totals only.
+          additionalProperties:
+            type: object
+            properties:
+              unread: { type: integer }
+              attention: { type: integer }
+
+    NotificationEvent:
+      type: object
+      properties:
+        id: { type: string }
+        category: { type: string, enum: [page, agent_run, membership] }
+        type:
+          type: string
+          description: |
+            `page.created` · `page.updated` · `page.deleted` · `page.metadata.updated` ·
+            `agent.run.completed` · `agent.run.failed` · `membership.requested` ·
+            `membership.activated` · `membership.role_updated` · `membership.joined`
+        spaceSlug: { type: [string, "null"] }
+        subjectPath:
+          type: [string, "null"]
+          description: Page path for page and agent-run events; null for org-scoped events.
+        subjectTitle: { type: string }
+        actor:
+          type: object
+          properties:
+            id: { type: string }
+            kind: { type: string, enum: [human, agent] }
+            label: { type: string }
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Per type: `version`/`changedKeys` for page events; `taskPath`, `taskTitle`,
+            `runId`, `status`, `trigger`, `durationMs`, `message` for agent runs;
+            `subjectUserId`, `email`, `displayName`, `role`, `status` for membership.
+            A page event on a typed record (a page stamped with a template, or carrying a
+            `type` key) also carries `recordType`, `recordStatus`, `recordOwner` (as
+            written; information only) and `attention` (the write moved the record into a
+            status that waits on a person).
+        occurredAt: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        count:
+          type: integer
+          description: Occurrences folded into this row while it stayed unread.
+        occurredAt: { type: string, format: date-time }
+        readAt: { type: [string, "null"], format: date-time }
+        summary:
+          type: string
+          description: One-line human summary, identical across REST, MCP, CLI and the app.
+        href:
+          type: [string, "null"]
+          description: |
+            App-relative link the row opens (`/pages/<path>`, or an admin route for membership
+            events read by an admin). Null when there is nothing the reader can open.
+        attention:
+          type: boolean
+          description: |
+            The row needs the caller rather than merely informing them: a failed agent run, an
+            access request, or a typed record moved into a status that waits on a person
+            (`blocked`, `review`, `failed`, `open`). Decided when the row is written and kept
+            true through folds until the row is read.
+        event: { $ref: "#/components/schemas/NotificationEvent" }
+
+    NotificationListResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        unread: { type: integer }
+        nextBefore:
+          type: [string, "null"]
+          description: Opaque keyset cursor for the next page; null once exhausted.
+        limit: { type: integer }
+        unreadOnly: { type: boolean }
+
     WebhookEventType:
       type: string
-      enum: [page.created, page.updated, page.deleted, page.metadata.updated]
+      description: |
+        `page.*` events carry a `page` object. `agent.run.*` events carry `page` (the run
+        record) and `run` (task path, run id, status, trigger, duration, failure message).
+        `membership.*` events carry `member` (user id, email, display name, role, status)
+        and no `page`; they are org-scoped, so a webhook filtered to one space never
+        receives them.
+      enum:
+        - page.created
+        - page.updated
+        - page.deleted
+        - page.metadata.updated
+        - agent.run.completed
+        - agent.run.failed
+        - membership.requested
+        - membership.activated
+        - membership.role_updated
+        - membership.joined
 
     Webhook:
       type: object
@@ -5013,6 +5412,21 @@ components:
                 enum: [eq, neq, exists, missing, gt, gte, lt, lte, contains, in, not-in]
               value: {}
         space: { type: [string, "null"] }
+        limit:
+          type: integer
+          description: Rows per page as applied (clamped to 500).
+        offset:
+          type: integer
+          description: Rows skipped before the first item.
+        hasMore:
+          type: boolean
+          description: True when at least one more matching page exists past this window.
+        nextOffset:
+          type: [integer, "null"]
+          description: Offset for the next page, or null when `hasMore` is false.
+        total:
+          type: integer
+          description: Exact count of every matching page; present when `includeTotal=true`.
         items:
           type: array
           items:
@@ -5162,6 +5576,26 @@ components:
         visibility: { type: string, enum: [private, org] }
         scopeKind: { type: string }
         isSystemManaged: { type: boolean }
+        contributionMode:
+          type: string
+          enum: [none, own_pages]
+          description: |
+            Receipt logging (specs/SPACE-CONTRIBUTIONS.md). `own_pages` lets every active
+            org member create pages under `contributionPathPrefix` and read or update only
+            the pages they created, with no space membership.
+        contributionPathPrefix:
+          type: [string, "null"]
+          description: Normalized `segment/` folder; null means `receipts/`.
+        contributionTemplate:
+          type: [string, "null"]
+          description: Template name in the space every contributed page is stamped with.
+        contributionUntil:
+          type: [string, "null"]
+          format: date-time
+          description: End of the window; null is open-ended.
+        contributionActive:
+          type: boolean
+          description: Mode is on and the window has not closed.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

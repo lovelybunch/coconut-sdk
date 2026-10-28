@@ -1,6 +1,6 @@
 {
-  // Deliberately self-contained: no shared base config; this package builds
-  // standalone.
+  // Deliberately self-contained (no @coco/config extends): this package is
+  // designed to be liftable into its own repository without edits.
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",

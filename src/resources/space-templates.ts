@@ -3,7 +3,7 @@
 // app's /templates gallery. Note: creating a space from a template carries
 // the same authorization bar as creating a space — org admin.
 
-import { CocoHttp } from "../http.js";
+import type { CocoHttp } from "../http.js";
 import type {
   CreateSpaceFromTemplateOptions,
   CreateSpaceFromTemplateResult,

@@ -35,7 +35,12 @@ const rows: Row[] = records.items.map((item) => ({
 }));
 
 const stageOrder = ["sourcing", "diligence", "closed"];
-const stages = [...new Set([...stageOrder.filter((s) => rows.some((r) => r.stage === s)), ...rows.map((r) => r.stage)])];
+const stages = [
+  ...new Set([
+    ...stageOrder.filter((s) => rows.some((r) => r.stage === s)),
+    ...rows.map((r) => r.stage),
+  ]),
+];
 const byStage = stages.map((stage) => {
   const inStage = rows.filter((row) => row.stage === stage);
   const scored = inStage.filter((row) => row.score !== null);
@@ -67,7 +72,11 @@ const PLOT_W = 480;
 const chartH = byStage.length * ROW_H;
 
 const escapeHtml = (value: string) =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 
 const bars = byStage
   .map((entry, index) => {
@@ -247,7 +256,10 @@ const summaryMarkdown = [
     .filter((row) => row.score !== null)
     .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
     .slice(0, 3)
-    .map((row) => `- [${row.title}](/pages/${row.path}) — ${row.stage}, conviction ${row.score?.toFixed(2)}`),
+    .map(
+      (row) =>
+        `- [${row.title}](/pages/${row.path}) — ${row.stage}, conviction ${row.score?.toFixed(2)}`,
+    ),
 ].join("\n");
 
 const report = await coco.pages.upsert(`${SPACE}/reports/pipeline-summary`, {

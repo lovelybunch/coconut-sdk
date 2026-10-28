@@ -2,17 +2,20 @@
 
 TypeScript SDK for the **Coconut Context** HTTP API — pages, structured
 metadata, search, templates and typed records, spaces, export/import, page
-links, and space agents.
+links, space agents, and your notification inbox.
 
 - **Zero runtime dependencies** — built on the platform `fetch` (Node ≥ 20,
-  Bun, Deno, modern browsers/workers).
+  Bun, Deno, modern browsers/workers). In-browser callers on a page served from
+  anywhere other than the deployment's own app origin need that origin added to
+  the API's CORS allowlist (`COCO_CORS_ALLOWED_ORIGINS`); server-side callers
+  are unaffected.
 - **Self-contained** — no dependency on the Coconut Context server code; the
   package builds and tests standalone.
 - **Faithful to the API contract** — types are transcribed from
-  [`openapi.yaml`](./openapi.yaml), the documented REST surface (vendored
-  at the repo root and drift-checked nightly against the deployed contract).
-  Admin consoles, auth flows, SCIM, billing, and internal runtime seams are
-  intentionally out of scope.
+  [`openapi.yaml`](https://github.com/lovelybunch/coconut-sdk/blob/main/openapi.yaml),
+  the documented REST surface, vendored at the root of the published repository
+  and copied from the monorepo at every release. Admin consoles, auth flows,
+  SCIM, billing, and internal runtime seams are intentionally out of scope.
 
 ## Install
 
@@ -28,7 +31,7 @@ import { CocoClient } from "coconut-sdk";
 const coco = new CocoClient({
   baseUrl: "http://localhost:8787",
   apiKey: process.env.COCO_API_KEY, // agent key (coco_...) or OAuth access token
-  // orgSlug: "acme",               // only on multi-tenant deployments
+  // orgSlug: "acme",               // only with devUser or the control-plane key (see Auth)
 });
 
 // Read a page both ways
@@ -67,6 +70,9 @@ await coco.pages.update("deals/acme", {
 });
 // …or let upsert() do read → write → retry-on-conflict for you
 await coco.pages.upsert("deals/acme", { content: "# Acme\n\nLatest." });
+
+// What needs your attention (humans only; agent keys have no inbox)
+const inbox = await coco.notifications.list({ unread: true, limit: 20 });
 ```
 
 ## Surface map
@@ -81,6 +87,7 @@ await coco.pages.upsert("deals/acme", { content: "# Acme\n\nLatest." });
 | `coco.records` | Typed-record sugar: `types(space)`, `query(space, type, …)` (implicit `template` stamp filter), `create(space, type, …)`. |
 | `coco.spaceTemplates` | Whole-space starting kits: gallery, full bundles, create-space-from-template (org admin). |
 | `coco.agents` | Space agents: rollups, model catalog, tasks (CRUD + schedules), async run triggers with `waitForRun`/`runTaskAndWait`, run records + transcripts, agent instructions. |
+| `coco.notifications` | The caller's inbox: list (unread and space filters, keyset paging), the badge summary (unread, how many need you, the split per space), mark read, mark all read (per space; `scope: "activity"` keeps the rows that need you unread). Page activity in spaces you edit, your agents' run outcomes, membership events. |
 
 ## Concurrency model
 
@@ -109,7 +116,7 @@ only — writes are never retried automatically.
 |---|---|---|
 | `apiKey` | `Authorization: Bearer …` | Agent keys (`coco_...`) and MCP OAuth access tokens (`at_...`, scope-capped) |
 | `devUser` | `X-Coco-User` | Dev-header deployments only — never production |
-| `orgSlug` / `orgId` | `X-Coco-Org-Slug` / `X-Coco-Org-Id` | Org context on multi-tenant deployments |
+| `orgSlug` / `orgId` | `X-Coco-Org-Slug` / `X-Coco-Org-Id` | Org context on multi-tenant deployments. Not needed with an org-bound `apiKey` — an agent key or OAuth token selects its own org, and a header naming another org is refused (403 `org_mismatch`). Still required with `devUser`, and with the deployment's control-plane key (`COCO_AGENT_KEY`), which is not bound to any org |
 
 ## Examples
 
@@ -123,17 +130,28 @@ versioned and linked: **blame** a page line by line and roll it back, and a
 ## Development
 
 ```bash
+pnpm install
 pnpm build   # tsc → dist/
 pnpm test    # vitest (mock-fetch unit tests)
 pnpm lint    # typecheck incl. examples
 ```
 
+This package is developed in the Coconut monorepo (`packages/sdk`, where the
+same scripts run as `pnpm --filter coconut-sdk <script>` and `lint` is ESLint)
+and exported to [lovelybunch/coconut-sdk](https://github.com/lovelybunch/coconut-sdk)
+at every release. That repository is a read-only mirror: issues and pull
+requests are welcome there, and a maintainer ports merged changes upstream with
+credit. See its `CONTRIBUTING.md`.
+
 ## Releasing
 
-Bump `version` in `package.json`, commit, tag `vX.Y.Z` (matching), push the
-tag — [`release.yml`](.github/workflows/release.yml) builds, tests, and
-publishes to npm via [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(OIDC: tokenless, with automatic provenance attestations).
+Releases are cut from the monorepo. The sync pushes the release tag `vX.Y.Z`
+to the mirror, whose [`release.yml`](https://github.com/lovelybunch/coconut-sdk/blob/main/.github/workflows/release.yml)
+builds, tests, and publishes to npm via
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC:
+tokenless, with automatic provenance attestations). The SDK and the
+[`coconut`](https://www.npmjs.com/package/coconut) CLI release together under
+one version.
 
 ## License
 

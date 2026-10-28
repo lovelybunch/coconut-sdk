@@ -1,8 +1,14 @@
 // coconut-sdk — TypeScript client for the Coconut Context HTTP API.
-// The documented contract lives in openapi.yaml at the repository root.
+// The documented contract is openapi.yaml: packages/app/public/openapi.yaml in
+// the monorepo, vendored at the root of the published coconut-sdk repository.
 
 export { CocoClient, type CocoClientOptions } from "./client.js";
-export { encodePagePath, type CocoAuthOptions, type CocoHttpOptions, type FetchLike } from "./http.js";
+export {
+  encodePagePath,
+  type CocoAuthOptions,
+  type CocoHttpOptions,
+  type FetchLike,
+} from "./http.js";
 export {
   CocoApiError,
   CocoAuthenticationError,

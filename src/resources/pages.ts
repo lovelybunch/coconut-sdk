@@ -3,7 +3,8 @@
 // method also works for personal pages by addressing them as `personal/<path>`
 // — the API routes personal paths through the same handlers.
 
-import { CocoHttp, encodePagePath } from "../http.js";
+import type { CocoHttp } from "../http.js";
+import { encodePagePath } from "../http.js";
 import {
   CocoNotFoundError,
   CocoPreconditionRequiredError,
@@ -39,7 +40,7 @@ export interface UpsertPageOptions {
 export class PagesApi {
   constructor(private readonly http: CocoHttp) {}
 
-  /** Every page the caller can list, org-wide (`GET /pages`). */
+  /** Every page the caller can read across the org's generic spaces (`GET /pages`). */
   list(): Promise<PageListResult> {
     return this.http.requestJson<PageListResult>("GET", "/pages");
   }
@@ -116,7 +117,10 @@ export class PagesApi {
       } catch (error) {
         // Lost a race with a concurrent writer: 412 (stale version) when
         // updating, 428 (page appeared between read and create) when creating.
-        if (error instanceof CocoVersionConflictError || error instanceof CocoPreconditionRequiredError) {
+        if (
+          error instanceof CocoVersionConflictError ||
+          error instanceof CocoPreconditionRequiredError
+        ) {
           lastError = error;
           continue;
         }
@@ -128,7 +132,10 @@ export class PagesApi {
 
   /** Revision history, newest first. */
   versions(path: string): Promise<PageVersionsResult> {
-    return this.http.requestJson<PageVersionsResult>("GET", `/pages/${encodePagePath(path)}/versions`);
+    return this.http.requestJson<PageVersionsResult>(
+      "GET",
+      `/pages/${encodePagePath(path)}/versions`,
+    );
   }
 
   /** Restores a historical version by appending a new revision copied from it. */
@@ -146,7 +153,10 @@ export class PagesApi {
 
   /** Current metadata with per-key attribution. */
   getMetadata(path: string): Promise<PageMetadataResult> {
-    return this.http.requestJson<PageMetadataResult>("GET", `/pages/${encodePagePath(path)}/metadata`);
+    return this.http.requestJson<PageMetadataResult>(
+      "GET",
+      `/pages/${encodePagePath(path)}/metadata`,
+    );
   }
 
   /**
@@ -154,9 +164,13 @@ export class PagesApi {
    * (null deletes), `append` extends arrays, `appendUnique` is idempotent.
    */
   patchMetadata(path: string, patch: MetadataPatch): Promise<PageMetadataResult> {
-    return this.http.requestJson<PageMetadataResult>("PATCH", `/pages/${encodePagePath(path)}/metadata`, {
-      body: patch,
-    });
+    return this.http.requestJson<PageMetadataResult>(
+      "PATCH",
+      `/pages/${encodePagePath(path)}/metadata`,
+      {
+        body: patch,
+      },
+    );
   }
 
   /** Per-key metadata audit trail, newest first. */
