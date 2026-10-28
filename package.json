@@ -1,7 +1,7 @@
 {
   "name": "coconut-sdk",
   "version": "0.2.0",
-  "description": "TypeScript SDK for the Coconut Context HTTP API — pages, structured metadata, search, templates and typed records, spaces, and space agents.",
+  "description": "TypeScript SDK for the Coconut Context HTTP API — pages, structured metadata, search, templates and typed records, spaces, space agents, and notifications.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
@@ -19,7 +19,7 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@9.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lovelybunch/coconut-sdk.git"
@@ -42,19 +42,20 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.lint.json",
-    "prepublishOnly": "pnpm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.lint.json",
     "example:pull": "node --import tsx examples/01-pull-records.ts",
     "example:write-back": "node --import tsx examples/02-write-back.ts",
     "example:visualize": "node --import tsx examples/03-visualize.ts",
     "example:chat": "node --import tsx examples/04-chat-with-a-space.ts",
     "example:blame": "node --import tsx examples/05-blame.ts",
-    "example:gardener": "node --import tsx examples/06-gardener.ts"
+    "example:gardener": "node --import tsx examples/06-gardener.ts",
+    "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.120.0",
-    "@types/node": "^20.14.0",
-    "tsx": "^4.16.0",
-    "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "@anthropic-ai/sdk": "0.120.0",
+    "@types/node": "20.19.43",
+    "tsx": "4.22.4",
+    "typescript": "5.9.3",
+    "vitest": "1.6.1"
   }
 }

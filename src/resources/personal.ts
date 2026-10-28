@@ -4,7 +4,8 @@
 // surface — listing, writes (no template seeding on personal pages), and
 // deletion — with paths relative to the personal space.
 
-import { CocoHttp, encodePagePath } from "../http.js";
+import type { CocoHttp } from "../http.js";
+import { encodePagePath } from "../http.js";
 import type { Page, PageWriteResult, SpacePagesResult } from "../types.js";
 
 export interface WritePersonalPageOptions {
@@ -45,10 +46,14 @@ export class PersonalApi {
   /** Creates (201) or updates (needs `expectedVersion`) a personal page. */
   write(path: string, options: WritePersonalPageOptions): Promise<PageWriteResult> {
     const { expectedVersion, ...body } = options;
-    return this.http.requestJson<PageWriteResult>("PUT", `/pages/personal/${encodePagePath(path)}`, {
-      body,
-      ifMatchVersion: expectedVersion,
-    });
+    return this.http.requestJson<PageWriteResult>(
+      "PUT",
+      `/pages/personal/${encodePagePath(path)}`,
+      {
+        body,
+        ifMatchVersion: expectedVersion,
+      },
+    );
   }
 
   /** Permanently deletes a personal page (personal pages only). */

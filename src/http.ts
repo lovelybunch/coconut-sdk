@@ -20,7 +20,12 @@ export interface CocoAuthOptions {
   devUser?: string;
   /**
    * Org context for multi-tenant deployments, sent as `X-Coco-Org-Slug`.
-   * Single-tenant deployments need no org context.
+   * Not needed with an org-bound `apiKey`: an agent key (`coco_...`) or an
+   * OAuth access token belongs to one org and selects it by itself, and a
+   * header naming a different org is refused (403 `org_mismatch`). Still
+   * required with `devUser`, and with the deployment's control-plane key
+   * (`COCO_AGENT_KEY`), which is not bound to any org. Single-tenant
+   * deployments need no org context.
    */
   orgSlug?: string;
   /** Org context by id (`X-Coco-Org-Id`); alternative to `orgSlug`. */
@@ -41,6 +46,12 @@ export interface CocoHttpOptions extends CocoAuthOptions {
   maxRetries?: number;
   /** Base delay between retries in ms (exponential backoff). Default 250. */
   retryDelayMs?: number;
+  /**
+   * Per-request timeout in ms. Default 30000; set 0 to disable. Without it a
+   * stalled server hangs every call forever (the retry loop never gets a
+   * first result to retry).
+   */
+  timeoutMs?: number;
 }
 
 export type QueryValue = string | number | boolean | undefined;
@@ -83,6 +94,7 @@ export class CocoHttp {
   private readonly fetchImpl: FetchLike;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+  private readonly timeoutMs: number;
 
   constructor(options: CocoHttpOptions) {
     if (!options.baseUrl) {
@@ -96,12 +108,15 @@ export class CocoHttp {
     if (options.orgId) this.headers["x-coco-org-id"] = options.orgId;
     const fetchImpl = options.fetch ?? (globalThis.fetch as FetchLike | undefined);
     if (!fetchImpl) {
-      throw new CocoConnectionError("No fetch implementation available; pass one via options.fetch.");
+      throw new CocoConnectionError(
+        "No fetch implementation available; pass one via options.fetch.",
+      );
     }
     // Bind in case a raw globalThis.fetch needs its receiver.
     this.fetchImpl = (input, init) => fetchImpl(input, init);
     this.maxRetries = options.maxRetries ?? 2;
     this.retryDelayMs = options.retryDelayMs ?? 250;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
   buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -150,7 +165,14 @@ export class CocoHttp {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       let response: Response;
       try {
-        response = await this.fetchImpl(url, { method, headers, body });
+        response = await this.fetchImpl(url, {
+          method,
+          headers,
+          body,
+          ...(this.timeoutMs > 0 && typeof AbortSignal?.timeout === "function"
+            ? { signal: AbortSignal.timeout(this.timeoutMs) }
+            : {}),
+        });
       } catch (error) {
         lastError = error;
         if (attempt + 1 < attempts) {
@@ -191,7 +213,9 @@ export class CocoHttp {
       parsedBody = undefined;
     }
     const serverMessage =
-      parsedBody && typeof parsedBody === "object" && typeof (parsedBody as { error?: unknown }).error === "string"
+      parsedBody &&
+      typeof parsedBody === "object" &&
+      typeof (parsedBody as { error?: unknown }).error === "string"
         ? (parsedBody as { error: string }).error
         : undefined;
     const message = `${method} ${url} → ${response.status}${serverMessage ? `: ${serverMessage}` : ""}`;

@@ -1,7 +1,7 @@
 // Spaces: listings, per-space page listings, broken-link reports, and the
 // portable export/import bundle format (`coco-space-export`).
 
-import { CocoHttp } from "../http.js";
+import type { CocoHttp } from "../http.js";
 import type {
   BrokenLinksResult,
   SpaceExportBundle,
@@ -22,7 +22,10 @@ export class SpacesApi {
 
   /** ACL-visible pages of one space, sorted by path. */
   pages(spaceSlug: string): Promise<SpacePagesResult> {
-    return this.http.requestJson<SpacePagesResult>("GET", `/spaces/${encodeURIComponent(spaceSlug)}/pages`);
+    return this.http.requestJson<SpacePagesResult>(
+      "GET",
+      `/spaces/${encodeURIComponent(spaceSlug)}/pages`,
+    );
   }
 
   /**

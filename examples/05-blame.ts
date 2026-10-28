@@ -24,7 +24,8 @@ const PAGE = process.env.COCO_PAGE ?? `${SPACE}/deals/acme`;
 // ANSI color only on a TTY, and never when NO_COLOR is set.
 const useColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 const paint = (code: string, text: string): string => (useColor ? `[${code}m${text}[0m` : text);
-const byActor = (type: "human" | "agent", text: string): string => paint(type === "human" ? "36" : "35", text);
+const byActor = (type: "human" | "agent", text: string): string =>
+  paint(type === "human" ? "36" : "35", text);
 
 // --- Line attribution --------------------------------------------------------
 
@@ -38,11 +39,15 @@ type BlamedLine = { text: string; version: number };
 function lcsMatches(before: string[], after: string[]): Array<[number, number]> {
   const rows = before.length;
   const cols = after.length;
-  const table: number[][] = Array.from({ length: rows + 1 }, () => new Array<number>(cols + 1).fill(0));
+  const table: number[][] = Array.from({ length: rows + 1 }, () =>
+    new Array<number>(cols + 1).fill(0),
+  );
   for (let i = rows - 1; i >= 0; i--) {
     for (let j = cols - 1; j >= 0; j--) {
       table[i][j] =
-        before[i] === after[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+        before[i] === after[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
     }
   }
   const pairs: Array<[number, number]> = [];
@@ -75,7 +80,10 @@ function blameStep(
   firstSeen: Map<string, number>,
 ): BlamedLine[] {
   const survivors = new Map(
-    lcsMatches(previous.map((line) => line.text), nextLines).map(([oldIndex, newIndex]) => [newIndex, oldIndex]),
+    lcsMatches(
+      previous.map((line) => line.text),
+      nextLines,
+    ).map(([oldIndex, newIndex]) => [newIndex, oldIndex]),
   );
   return nextLines.map((text, index) => {
     const from = survivors.get(index);
@@ -91,7 +99,9 @@ function blameStep(
 
 heading(`Revisions of ${PAGE}`);
 const history = await coco.pages.versions(PAGE);
-const versions: PageVersion[] = [...history.items].sort((left, right) => left.version - right.version);
+const versions: PageVersion[] = [...history.items].sort(
+  (left, right) => left.version - right.version,
+);
 printTable(
   versions.map((revision) => ({
     version: `v${revision.version}`,
@@ -170,7 +180,9 @@ const timeline = [
   })),
 ].sort((left, right) => left.at.localeCompare(right.at));
 for (const entry of timeline) {
-  console.log(`${entry.at}  ${byActor(entry.type, `${entry.event.padEnd(22)} ${entry.by.padEnd(24)}`)} ${entry.detail}`);
+  console.log(
+    `${entry.at}  ${byActor(entry.type, `${entry.event.padEnd(22)} ${entry.by.padEnd(24)}`)} ${entry.detail}`,
+  );
 }
 
 // --- 3. Rollback is just another revision ------------------------------------

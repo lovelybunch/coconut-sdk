@@ -84,7 +84,14 @@ describe("auth and headers", () => {
 
 describe("pages", () => {
   it("reads a page as JSON with a version selector", async () => {
-    const page = { path: "deals/acme", title: "Acme", version: 3, updatedAt: "", frontmatter: {}, content: "# A" };
+    const page = {
+      path: "deals/acme",
+      title: "Acme",
+      version: 3,
+      updatedAt: "",
+      frontmatter: {},
+      content: "# A",
+    };
     const { client, requests } = createClient([{ body: page }]);
     const result = await client.pages.get("deals/acme", { version: 3 });
     expect(result).toEqual(page);
@@ -104,7 +111,9 @@ describe("pages", () => {
   });
 
   it("creates with template + metadata and no If-Match", async () => {
-    const { client, requests } = createClient([{ status: 201, body: { path: "deals/acme", version: 1 } }]);
+    const { client, requests } = createClient([
+      { status: 201, body: { path: "deals/acme", version: 1 } },
+    ]);
     await client.pages.create("deals/acme", {
       title: "Acme",
       template: "deal-memo",
@@ -112,7 +121,10 @@ describe("pages", () => {
     });
     expect(requests[0].method).toBe("PUT");
     expect(requests[0].headers["if-match"]).toBeUndefined();
-    expect(requests[0].body).toMatchObject({ template: "deal-memo", metadata: { stage: "sourcing" } });
+    expect(requests[0].body).toMatchObject({
+      template: "deal-memo",
+      metadata: { stage: "sourcing" },
+    });
   });
 
   it("updates with the expected version as a weak ETag", async () => {
@@ -140,7 +152,11 @@ describe("pages", () => {
     const { client } = createClient([
       {
         status: 403,
-        body: { error: "Forbidden", reasonCode: "space_membership_required", nextSteps: ["Ask an admin."] },
+        body: {
+          error: "Forbidden",
+          reasonCode: "space_membership_required",
+          nextSteps: ["Ask an admin."],
+        },
       },
     ]);
     const error = await client.pages.get("private/page").catch((caught: unknown) => caught);
@@ -174,7 +190,9 @@ describe("pages", () => {
   });
 
   it("patches metadata with set/append/appendUnique", async () => {
-    const { client, requests } = createClient([{ body: { path: "deals/acme", metadata: {}, entries: [] } }]);
+    const { client, requests } = createClient([
+      { body: { path: "deals/acme", metadata: {}, entries: [] } },
+    ]);
     await client.pages.patchMetadata("deals/acme", {
       set: { stage: "diligence" },
       appendUnique: { sources: ["https://a.example"] },
@@ -210,7 +228,9 @@ describe("search", () => {
   });
 
   it("runs full-text search with space scoping", async () => {
-    const { client, requests } = createClient([{ body: { query: "acme", space: "deals", items: [] } }]);
+    const { client, requests } = createClient([
+      { body: { query: "acme", space: "deals", items: [] } },
+    ]);
     await client.search.text("acme", { space: "deals", limit: 5 });
     expect(requests[0].url.searchParams.get("q")).toBe("acme");
     expect(requests[0].url.searchParams.get("space")).toBe("deals");
@@ -220,7 +240,9 @@ describe("search", () => {
 
 describe("records", () => {
   it("queries with the implicit template stamp filter and metadata included", async () => {
-    const { client, requests } = createClient([{ body: { filters: [], space: "deals", items: [] } }]);
+    const { client, requests } = createClient([
+      { body: { filters: [], space: "deals", items: [] } },
+    ]);
     await client.records.query("deals", "deal-memo", {
       filters: [{ key: "stage", op: "eq", value: "diligence" }],
     });
@@ -231,13 +253,18 @@ describe("records", () => {
   });
 
   it("creates a record through the template door", async () => {
-    const { client, requests } = createClient([{ status: 201, body: { path: "deals/deals/acme", version: 1 } }]);
+    const { client, requests } = createClient([
+      { status: 201, body: { path: "deals/deals/acme", version: 1 } },
+    ]);
     await client.records.create("deals", "deal-memo", {
       path: "deals/acme",
       metadata: { stage: "sourcing" },
     });
     expect(requests[0].url.pathname).toBe("/pages/deals/deals/acme");
-    expect(requests[0].body).toMatchObject({ template: "deal-memo", metadata: { stage: "sourcing" } });
+    expect(requests[0].body).toMatchObject({
+      template: "deal-memo",
+      metadata: { stage: "sourcing" },
+    });
   });
 
   it("lists a space's record types (schema-bearing templates only)", async () => {
@@ -265,7 +292,9 @@ describe("agents", () => {
       { body: run("waiting") },
       { body: run("completed") },
     ]);
-    const result = await client.agents.runTaskAndWait("deals", "daily-digest", { pollIntervalMs: 1 });
+    const result = await client.agents.runTaskAndWait("deals", "daily-digest", {
+      pollIntervalMs: 1,
+    });
     expect(result.status).toBe("completed");
     expect(requests[0].method).toBe("POST");
     expect(requests[0].url.pathname).toBe("/spaces/deals/agent/tasks/daily-digest/runs");
@@ -273,7 +302,9 @@ describe("agents", () => {
   });
 
   it("writes tasks with page-style optimistic concurrency", async () => {
-    const { client, requests } = createClient([{ body: { path: "deals/agents/digest", version: 2 } }]);
+    const { client, requests } = createClient([
+      { body: { path: "deals/agents/digest", version: 2 } },
+    ]);
     await client.agents.updateTask("deals", "digest", { content: "# Task", expectedVersion: 1 });
     expect(requests[0].headers["if-match"]).toBe('W/"1"');
   });
@@ -283,7 +314,7 @@ describe("session", () => {
   it("resolves the credential's principal and identity", async () => {
     const session = {
       principal: { id: "user-1", kind: "human", scopes: ["read", "write"] },
-      identity: { name: "Ada", email: "ada@example.com" },
+      identity: { name: "Kevin", email: "kevin@coconut.dev" },
     };
     const { client, requests } = createClient([{ body: session }]);
     const result = await client.session();
@@ -294,7 +325,12 @@ describe("session", () => {
 
   it("returns a null identity for agent-key principals", async () => {
     const { client } = createClient([
-      { body: { principal: { id: "agent-1", kind: "agent", scopes: ["read", "write"] }, identity: null } },
+      {
+        body: {
+          principal: { id: "agent-1", kind: "agent", scopes: ["read", "write"] },
+          identity: null,
+        },
+      },
     ]);
     const result = await client.session();
     expect(result.principal.kind).toBe("agent");
@@ -327,5 +363,100 @@ describe("errors and retries", () => {
     expect(error).toBeInstanceOf(CocoRateLimitError);
     expect((error as CocoRateLimitError).retryAfterSeconds).toBe(7);
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe("notifications", () => {
+  it("lists the inbox with unread/limit/before mapped to the query string", async () => {
+    const result = {
+      items: [
+        {
+          id: "n1",
+          count: 2,
+          occurredAt: "2026-09-17T10:05:00.000Z",
+          readAt: null,
+          summary: '"Acme Corp" was updated 2 times, most recently by Olivia',
+          event: {
+            id: "e1",
+            category: "page",
+            type: "page.updated",
+            spaceSlug: "deals",
+            subjectPath: "deals/acme",
+            subjectTitle: "Acme Corp",
+            actor: { id: "a1", kind: "agent", label: "Olivia" },
+            payload: { version: 4 },
+            occurredAt: "2026-09-17T10:05:00.000Z",
+          },
+        },
+      ],
+      unread: 1,
+      nextBefore: null,
+      limit: 5,
+      unreadOnly: true,
+    };
+    const { client, requests } = createClient([{ body: result }]);
+    const listed = await client.notifications.list({
+      unreadOnly: true,
+      space: "deals",
+      limit: 5,
+      before: "2026-09-17T11:00:00.000Z",
+    });
+    expect(listed).toEqual(result);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url.pathname).toBe("/notifications");
+    expect(requests[0].url.searchParams.get("unread")).toBe("1");
+    expect(requests[0].url.searchParams.get("space")).toBe("deals");
+    expect(requests[0].url.searchParams.get("limit")).toBe("5");
+    expect(requests[0].url.searchParams.get("before")).toBe("2026-09-17T11:00:00.000Z");
+  });
+
+  it("omits the unread flag by default and reads the badge count", async () => {
+    const { client, requests } = createClient([
+      { body: { items: [], unread: 0, nextBefore: null, limit: 20, unreadOnly: false } },
+      { body: { unread: 3 } },
+    ]);
+    await client.notifications.list();
+    expect(requests[0].url.searchParams.has("unread")).toBe(false);
+    expect(requests[0].url.searchParams.has("space")).toBe(false);
+    expect(await client.notifications.unreadCount()).toEqual({ unread: 3 });
+    expect(requests[1].url.pathname).toBe("/notifications/unread-count");
+  });
+
+  it("marks one, several, or all rows read through the matching endpoints", async () => {
+    const { client, requests } = createClient([
+      { body: { updated: 1 } },
+      { body: { updated: 2 } },
+      { body: { updated: 7 } },
+    ]);
+    await client.notifications.markRead("n1");
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url.pathname).toBe("/notifications/n1/read");
+    await client.notifications.markRead(["n1", "n2"]);
+    expect(requests[1].url.pathname).toBe("/notifications/read");
+    expect(requests[1].body).toEqual({ ids: ["n1", "n2"] });
+    await client.notifications.markAllRead();
+    expect(requests[2].url.pathname).toBe("/notifications/read-all");
+    expect([...requests[2].url.searchParams.keys()]).toEqual([]);
+  });
+
+  it("narrows mark-all-read to one space and keeps the rows that need the caller", async () => {
+    const { client, requests } = createClient([{ body: { updated: 3 } }]);
+    await client.notifications.markAllRead({ space: "deals", scope: "activity" });
+    expect(requests[0].url.pathname).toBe("/notifications/read-all");
+    expect(requests[0].url.searchParams.get("space")).toBe("deals");
+    expect(requests[0].url.searchParams.get("scope")).toBe("activity");
+  });
+
+  it("surfaces the agent-credential refusal as a permission error", async () => {
+    const { client } = createClient([
+      {
+        status: 403,
+        body: {
+          error: "Notifications are delivered to people, not agent credentials.",
+          reason: "human_principal_required",
+        },
+      },
+    ]);
+    await expect(client.notifications.list()).rejects.toBeInstanceOf(CocoPermissionError);
   });
 });

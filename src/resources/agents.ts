@@ -3,7 +3,8 @@
 // REST parity with the agent_* MCP tool family — rollups, tasks, async run
 // triggers with polling, run records, and the agent persona.
 
-import { CocoHttp, encodePagePath } from "../http.js";
+import type { CocoHttp } from "../http.js";
+import { encodePagePath } from "../http.js";
 import { CocoError } from "../errors.js";
 import type {
   AgentInstructions,
@@ -19,7 +20,11 @@ import type {
   WriteAgentTaskOptions,
 } from "../types.js";
 
-const TERMINAL_RUN_STATUSES: ReadonlySet<AgentRunStatus> = new Set(["completed", "failed", "unknown"]);
+const TERMINAL_RUN_STATUSES: ReadonlySet<AgentRunStatus> = new Set([
+  "completed",
+  "failed",
+  "unknown",
+]);
 
 export class AgentsApi {
   constructor(private readonly http: CocoHttp) {}
@@ -44,7 +49,11 @@ export class AgentsApi {
   }
 
   /** One task in full — markdown, frontmatter (schedule), and recent runs. */
-  getTask(spaceSlug: string, task: string, options: { runsLimit?: number } = {}): Promise<AgentTaskDetail> {
+  getTask(
+    spaceSlug: string,
+    task: string,
+    options: { runsLimit?: number } = {},
+  ): Promise<AgentTaskDetail> {
     return this.http.requestJson<AgentTaskDetail>(
       "GET",
       `/spaces/${encodeURIComponent(spaceSlug)}/agent/tasks/${encodePagePath(task)}`,
@@ -56,7 +65,11 @@ export class AgentsApi {
    * Creates a task (`<space>/agents/<task>`, expects 201). Scheduling rides
    * in frontmatter: `schedule` (5-field cron), `scheduleTz`, `scheduleEnabled`.
    */
-  createTask(spaceSlug: string, task: string, options: WriteAgentTaskOptions): Promise<PageWriteResult> {
+  createTask(
+    spaceSlug: string,
+    task: string,
+    options: WriteAgentTaskOptions,
+  ): Promise<PageWriteResult> {
     return this.http.requestJson<PageWriteResult>(
       "PUT",
       `/spaces/${encodeURIComponent(spaceSlug)}/agent/tasks/${encodePagePath(task)}`,

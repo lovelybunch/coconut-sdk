@@ -230,7 +230,9 @@ async function turn(userInput: string): Promise<void> {
   }
 }
 
-console.log(`Chatting with "${spaceInfo.spaceName}" (${spaceInfo.items.length} pages) via ${MODEL}.`);
+console.log(
+  `Chatting with "${spaceInfo.spaceName}" (${spaceInfo.items.length} pages) via ${MODEL}.`,
+);
 console.log(`Ask about the space, or "exit" to quit.\n`);
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

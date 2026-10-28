@@ -35,15 +35,21 @@ const MAP_PATH = `${SPACE}/reports/map`;
 const RESERVED_PREFIXES = ["templates/", "agents/"];
 
 /** `demo/deals/acme` → `deals/acme`. */
-const relative = (path: string): string => (path.startsWith(`${SPACE}/`) ? path.slice(SPACE.length + 1) : path);
+const relative = (path: string): string =>
+  path.startsWith(`${SPACE}/`) ? path.slice(SPACE.length + 1) : path;
 /** Link targets may arrive as `/pages/demo/deals/acme` or `demo/deals/acme`. */
-const normalizeTarget = (target: string): string => target.replace(/^\/?pages\//, "").replace(/^\//, "");
+const normalizeTarget = (target: string): string =>
+  target.replace(/^\/?pages\//, "").replace(/^\//, "");
 const inGarden = (path: string): boolean =>
   path.startsWith(`${SPACE}/`) &&
   path !== MAP_PATH &&
   !RESERVED_PREFIXES.some((prefix) => relative(path).startsWith(prefix));
 
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
   const results: R[] = new Array<R>(items.length);
   let next = 0;
   await Promise.all(
@@ -109,7 +115,9 @@ async function readGarden(): Promise<Garden> {
   const listing = await coco.spaces.pages(SPACE);
   const pages = listing.items.filter((page) => inGarden(page.path));
   const known = new Set(pages.map((page) => page.path));
-  const links: PageLinksResult[] = await mapWithConcurrency(pages, 5, (page) => coco.pages.links(page.path));
+  const links: PageLinksResult[] = await mapWithConcurrency(pages, 5, (page) =>
+    coco.pages.links(page.path),
+  );
 
   const seen = new Set<string>();
   const edges: Array<{ from: string; to: string }> = [];
@@ -140,7 +148,9 @@ if (garden.pages.length === 0) {
   console.log("Nothing growing here — run example 02 first.");
   process.exit(1);
 }
-console.log(`${garden.pages.length} pages, ${garden.edges.length} links, ${garden.dangling.length} dangling`);
+console.log(
+  `${garden.pages.length} pages, ${garden.edges.length} links, ${garden.dangling.length} dangling`,
+);
 
 const orphansOf = (state: Garden): PageSummary[] =>
   state.pages.filter((page) => (state.inbound.get(page.path) ?? 0) === 0);
@@ -152,7 +162,10 @@ const hubsOf = (state: Garden) =>
       in: state.inbound.get(page.path) ?? 0,
       out: state.outbound.get(page.path) ?? 0,
     }))
-    .sort((left, right) => right.in + right.out - (left.in + left.out) || left.path.localeCompare(right.path))
+    .sort(
+      (left, right) =>
+        right.in + right.out - (left.in + left.out) || left.path.localeCompare(right.path),
+    )
     .slice(0, 5);
 
 console.log("\nOrphans (no page links here):");
@@ -193,7 +206,9 @@ for (const [target, links] of byTarget) {
   const sources = [...new Set(links.map((link) => link.sourcePath))];
   // The anchor text someone already wrote is the best title we have.
   const title =
-    links.find((link) => link.anchorText.trim())?.anchorText.trim() ?? relative(target).split("/").pop() ?? target;
+    links.find((link) => link.anchorText.trim())?.anchorText.trim() ??
+    relative(target).split("/").pop() ??
+    target;
   const type = typeFor(target);
   const note = "Stub planted by the gardener (coconut-sdk example 06)";
 
@@ -201,7 +216,9 @@ for (const [target, links] of byTarget) {
     ? // Through the record type: the template supplies the body, the schema
       // supplies defaults (a deal stub is born in `sourcing`), and the page is
       // stamped so it shows up in record queries immediately.
-      await plant(() => coco.records.create(SPACE, type.name, { path: relative(target), title, note }))
+      await plant(() =>
+        coco.records.create(SPACE, type.name, { path: relative(target), title, note }),
+      )
     : await plant(() =>
         coco.pages.create(target, {
           title,
@@ -245,7 +262,9 @@ const mermaid = [
   ...garden.edges.map((edge) => `  ${nodeId(edge.from)} --> ${nodeId(edge.to)}`),
   "  classDef orphan stroke-dasharray: 4 2;",
   "  classDef stub stroke-width: 3px;",
-  ...(orphans.length ? [`  class ${orphans.map((page) => nodeId(page.path)).join(",")} orphan;`] : []),
+  ...(orphans.length
+    ? [`  class ${orphans.map((page) => nodeId(page.path)).join(",")} orphan;`]
+    : []),
   ...(stubPaths.size ? [`  class ${[...stubPaths].map(nodeId).join(",")} stub;`] : []),
 ].join("\n");
 
@@ -280,7 +299,11 @@ const mapMarkdown = [
             .map((source) => `[${source}](/pages/${source})`)
             .join(", ")}`,
       )
-    : [danglingBefore === 0 ? "No dangling links found." : "Dangling links pointed outside the garden; left alone."]),
+    : [
+        danglingBefore === 0
+          ? "No dangling links found."
+          : "Dangling links pointed outside the garden; left alone.",
+      ]),
 ].join("\n");
 
 const map = await coco.pages.upsert(MAP_PATH, {
@@ -299,7 +322,9 @@ await coco.pages.patchMetadata(map.path, {
     "generated-at": new Date().toISOString(),
   },
 });
-console.log(`Wrote ${map.path} (v${map.version}) — a Mermaid graph of the space plus the orphan and hub report.`);
+console.log(
+  `Wrote ${map.path} (v${map.version}) — a Mermaid graph of the space plus the orphan and hub report.`,
+);
 console.log(
   "The metadata stamp makes the garden's health queryable: chart orphan-count over time, or alert when dangling-before > 0.",
 );

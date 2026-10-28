@@ -65,7 +65,8 @@ export class CocoApiError extends CocoError {
       if (Array.isArray(body.nextSteps)) {
         this.nextSteps = body.nextSteps.filter((step): step is string => typeof step === "string");
       }
-      if (typeof body.retryAfterSeconds === "number") this.retryAfterSeconds = body.retryAfterSeconds;
+      if (typeof body.retryAfterSeconds === "number")
+        this.retryAfterSeconds = body.retryAfterSeconds;
     }
   }
 }
